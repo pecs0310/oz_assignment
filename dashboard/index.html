@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>건강보험 청구 대시보드 | kr_claims 2024–2025</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+.viz-root{color-scheme:light;--surface-0:#f4f4f2;--surface-1:#fcfcfb;--border:#e4e3df;--grid:#ecebe7;
+ --text-primary:#0b0b0b;--text-secondary:#52514e;--text-muted:#7a7974;--series-1:#2a78d6;--series-2:#eb6834;}
+@media (prefers-color-scheme: dark){.viz-root{color-scheme:dark;--surface-0:#111110;--surface-1:#1a1a19;--border:#2e2e2c;--grid:#2a2a28;
+ --text-primary:#f0efec;--text-secondary:#c3c2b7;--text-muted:#8f8e86;--series-1:#3987e5;--series-2:#d95926;}}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif}
+.viz-root{background:var(--surface-0);color:var(--text-primary);min-height:100vh;padding:32px 20px}
+.wrap{max-width:1120px;margin:0 auto}
+header h1{font-size:24px;margin:0 0 6px}
+header p{margin:0;color:var(--text-secondary);font-size:14px;line-height:1.6}
+.persona{display:inline-block;margin-top:10px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-1);font-size:13px;color:var(--text-secondary)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0}
+.card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:18px}
+.kpi .label{font-size:13px;color:var(--text-secondary)}
+.kpi .value{font-size:30px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+.kpi .sub{font-size:12px;color:var(--text-muted);margin-top:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card h2{font-size:16px;margin:0 0 2px}
+.card .desc{font-size:12px;color:var(--text-muted);margin:0 0 12px}
+.chart{position:relative;height:320px}
+.full{margin-top:12px}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--text-secondary);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.insight{margin-top:12px;font-size:15px;line-height:1.7}
+.insight b{font-size:16px}
+details{margin-top:12px;font-size:13px}
+table{border-collapse:collapse;width:100%;margin-top:8px;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:right}
+th:first-child,td:first-child{text-align:left}
+footer{margin-top:20px;font-size:12px;color:var(--text-muted);line-height:1.6}
+@media (max-width:820px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="viz-root"><div class="wrap">
+<header>
+ <h1>건강보험 청구 대시보드 (2024–2025)</h1>
+ <p>어떤 상병에서 청구가 많고, 요양기관 종별에 따라 진료비가 얼마나 다른가</p>
+ <div class="persona">이 페이지는 <b>병원 경영기획팀장</b>이 <b>월초 경영회의 전날</b>에 <b>진료비와 환자 구성을 점검하기 위해</b> 본다</div>
+</header>
+
+<section class="kpis" id="kpis"></section>
+
+<section class="grid2">
+ <div class="card"><h2>상병별 명세서 수 Top 10</h2><p class="desc">주상병(main_sick) 기준, 2년 합계</p><div class="chart"><canvas id="c-sick"></canvas></div></div>
+ <div class="card"><h2>종별 건당 진료비</h2><p class="desc">명세서 1건당 평균 진료비 총액(rvd_rpe_tamt_amt), 원</p><div class="chart"><canvas id="c-cl"></canvas></div></div>
+</section>
+
+<section class="card full">
+ <h2>월별 명세서 수: 전체 vs 호흡기 질환</h2>
+ <p class="desc">호흡기 질환 = 주상병 코드가 J로 시작</p>
+ <div class="legend"><span><i style="background:var(--series-1)"></i>전체</span><span><i style="background:var(--series-2)"></i>호흡기 질환(J)</span></div>
+ <div class="chart"><canvas id="c-month"></canvas></div>
+</section>
+
+<section class="card full">
+ <div class="insight" id="insight"></div>
+ <details><summary>표로 보기</summary><div id="tables"></div></details>
+</section>
+
+<footer>
+ 데이터: 오즈코딩스쿨 AI 헬스케어 나노디그리 3기 실습 데이터 <code>kr_claims</code> (claim · institution · sick_master · code_table).
+ 가상 기록이며 실제 환자 기록이 아닙니다. 상병명은 심평원 상병마스터 기준.<br>
+ 제작: pecs0310 · Chart.js
+</footer>
+</div></div>
+
+<script>
+const DATA = {"kpi": {"claims": 38375, "total_amt": 3293580300, "patients": 2970, "avg_amt": 85826, "period": ["2024-01-01", "2025-12-31"]}, "top_sick": [{"code": "J209", "name": "상세불명의 급성 기관지염", "claims": 5285, "amt": 118229600}, {"code": "I109", "name": "기타 및 상세불명의 원발성 고혈압", "claims": 4403, "amt": 122299000}, {"code": "E119", "name": "합병증을 동반하지 않은 2형 당뇨병", "claims": 1473, "amt": 53758700}, {"code": "M545", "name": "요통", "claims": 1294, "amt": 79642400}, {"code": "M170", "name": "양쪽 원발성 무릎관절증", "claims": 1176, "amt": 138104000}, {"code": "M480", "name": "척추협착", "claims": 1075, "amt": 107542300}, {"code": "J304", "name": "상세불명의 알레르기비염", "claims": 1054, "amt": 22871500}, {"code": "J00", "name": "급성 비인두염[감기]", "claims": 974, "amt": 19509400}, {"code": "J029", "name": "상세불명의 급성 인두염", "claims": 879, "amt": 19956400}, {"code": "E785", "name": "상세불명의 고지질혈증", "claims": 782, "amt": 27705200}], "by_cl": [{"code": "31", "name": "의원", "claims": 30328, "avg_amt": 36019, "slf_rate": 27.2}, {"code": "21", "name": "병원", "claims": 2742, "avg_amt": 118056, "slf_rate": 22.5}, {"code": "11", "name": "종합병원", "claims": 3255, "avg_amt": 262177, "slf_rate": 21.0}, {"code": "01", "name": "상급종합병원", "claims": 2050, "avg_amt": 499558, "slf_rate": 19.8}], "monthly": [{"month": "2024-01", "total": 1293, "resp": 532}, {"month": "2024-02", "total": 1733, "resp": 741}, {"month": "2024-03", "total": 1865, "resp": 798}, {"month": "2024-04", "total": 1710, "resp": 641}, {"month": "2024-05", "total": 1513, "resp": 452}, {"month": "2024-06", "total": 1357, "resp": 342}, {"month": "2024-07", "total": 1379, "resp": 300}, {"month": "2024-08", "total": 1550, "resp": 371}, {"month": "2024-09", "total": 1370, "resp": 336}, {"month": "2024-10", "total": 1633, "resp": 488}, {"month": "2024-11", "total": 1745, "resp": 733}, {"month": "2024-12", "total": 1798, "resp": 763}, {"month": "2025-01", "total": 1746, "resp": 719}, {"month": "2025-02", "total": 1627, "resp": 762}, {"month": "2025-03", "total": 1825, "resp": 809}, {"month": "2025-04", "total": 1658, "resp": 622}, {"month": "2025-05", "total": 1557, "resp": 452}, {"month": "2025-06", "total": 1431, "resp": 379}, {"month": "2025-07", "total": 1487, "resp": 351}, {"month": "2025-08", "total": 1425, "resp": 341}, {"month": "2025-09", "total": 1391, "resp": 315}, {"month": "2025-10", "total": 1601, "resp": 474}, {"month": "2025-11", "total": 1765, "resp": 725}, {"month": "2025-12", "total": 1916, "resp": 839}]};
+const css = n => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(n).trim();
+const won = v => v.toLocaleString('ko-KR') + '원';
+const eok = v => (v / 1e8).toFixed(1) + '억 원';
+const num = v => v.toLocaleString('ko-KR');
+
+function renderKpis(k) {
+  const items = [
+    ['총 명세서 수', num(k.claims) + '건', '외래 + 입원'],
+    ['총 진료비', eok(k.total_amt), '진료비 총액 합계'],
+    ['수진자 수', num(k.patients) + '명', '고유 환자(jid)'],
+    ['건당 평균 진료비', won(k.avg_amt), '총 진료비 ÷ 명세서 수'],
+  ];
+  document.getElementById('kpis').innerHTML = items.map(([l, v, s]) =>
+    `<div class="card kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join('');
+}
+
+function baseOpts(extra = {}) {
+  const grid = css('--grid'), tick = css('--text-secondary');
+  return Object.assign({
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+      x: { grid: { color: grid, drawTicks: false }, border: { display: false }, ticks: { color: tick } },
+      y: { grid: { color: grid, drawTicks: false }, border: { display: false }, ticks: { color: tick } },
+    },
+  }, extra);
+}
+
+function barChart(id, labels, values, fmt, horizontal) {
+  const o = baseOpts({ indexAxis: horizontal ? 'y' : 'x' });
+  o.plugins.tooltip.callbacks = { label: c => fmt(c.raw) };
+  const valAxis = horizontal ? 'x' : 'y';
+  o.scales[valAxis].ticks.callback = v => horizontal ? num(v) : (v / 10000) + '만';
+  o.scales[horizontal ? 'y' : 'x'].grid.display = false;
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: css('--series-1'),
+      borderRadius: 4, borderSkipped: 'start', maxBarThickness: horizontal ? 18 : 56 }] },
+    options: o,
+  });
+}
+
+function lineChart(m) {
+  const o = baseOpts({ interaction: { mode: 'index', intersect: false } });
+  o.plugins.tooltip.callbacks = { label: c => `${c.dataset.label}: ${num(c.raw)}건` };
+  o.scales.x.grid.display = false;
+  o.scales.y.beginAtZero = true;
+  new Chart(document.getElementById('c-month'), {
+    type: 'line',
+    data: { labels: m.map(d => d.month), datasets: [
+      { label: '전체', data: m.map(d => d.total), borderColor: css('--series-1'), backgroundColor: css('--series-1'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.25 },
+      { label: '호흡기 질환', data: m.map(d => d.resp), borderColor: css('--series-2'), backgroundColor: css('--series-2'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.25 },
+    ] },
+    options: o,
+  });
+}
+
+function renderInsight(d) {
+  const cl = d.by_cl, first = cl[0], last = cl[cl.length - 1];
+  const ratio = (last.avg_amt / first.avg_amt).toFixed(1);
+  const share = x => x.claims * x.avg_amt / d.kpi.total_amt * 100;
+  const resp = d.monthly.map(x => x.resp);
+  const peak = Math.max(...resp), low = Math.min(...resp);
+  document.getElementById('insight').innerHTML =
+    `<b>인사이트:</b> ${last.name}의 건당 진료비(${won(last.avg_amt)})는 ${first.name}(${won(first.avg_amt)})의 약 <b>${ratio}배</b>다. ` +
+    `${last.name}은 명세서의 ${(last.claims / d.kpi.claims * 100).toFixed(0)}%에 불과하지만 전체 진료비의 약 ${share(last).toFixed(0)}%를 차지한다. ` +
+    `호흡기 질환 명세서는 겨울(11~3월)에 최대 ${num(peak)}건으로, 여름 최저 ${num(low)}건의 <b>약 ${(peak / low).toFixed(1)}배</b>까지 늘어난다.`;
+}
+
+function renderTables(d) {
+  const t = (head, rows) => `<table><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>`;
+  document.getElementById('tables').innerHTML =
+    t(['상병', '코드', '명세서 수', '진료비 합계'], d.top_sick.map(s => [s.name, s.code, num(s.claims), won(s.amt)])) +
+    t(['종별', '명세서 수', '건당 진료비', '본인부담률'], d.by_cl.map(c => [c.name, num(c.claims), won(c.avg_amt), c.slf_rate + '%'])) +
+    t(['월', '전체', '호흡기 질환'], d.monthly.map(m => [m.month, num(m.total), num(m.resp)]));
+}
+
+renderKpis(DATA.kpi);
+barChart('c-sick', DATA.top_sick.map(s => s.name), DATA.top_sick.map(s => s.claims), v => num(v) + '건', true);
+barChart('c-cl', DATA.by_cl.map(c => c.name), DATA.by_cl.map(c => c.avg_amt), won, false);
+lineChart(DATA.monthly);
+renderInsight(DATA);
+renderTables(DATA);
+</script>
+</body>
+</html>
